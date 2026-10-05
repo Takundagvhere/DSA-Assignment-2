@@ -1,0 +1,276 @@
+# ====================================================================
+#  FOOD DELIVERY PLATFORM - CLICKABLE API REQUESTS
+# --------------------------------------------------------------------
+#  Needs the "REST Client" extension in VS Code (by Huachao Mao).
+#  Click "Send Request" above any request to run it.
+#  The answer opens in a panel on the right.
+#
+#  Run them roughly in order: later requests reuse IDs from earlier
+#  ones (for example the restaurant ID from "createRestaurant").
+# ====================================================================
+
+@customer     = http://localhost:8081
+@restaurant   = http://localhost:8082
+@order        = http://localhost:8083
+@payment      = http://localhost:8084
+@delivery     = http://localhost:8085
+@notification = http://localhost:8086
+@admin        = http://localhost:8087
+
+# Saved IDs (filled in automatically from earlier responses)
+@restaurantId = {{createRestaurant.response.body.$.restaurantId}}
+@kapanaId     = {{addKapana.response.body.$.itemId}}
+@fantaId      = {{addFanta.response.body.$.itemId}}
+@orderId      = {{placeOrder.response.body.$.orderId}}
+@driverId     = {{registerDriver.response.body.$.driverId}}
+@customerId   = {{registerCustomer.response.body.$.customerId}}
+@deliveryId   = {{findDelivery.response.body.$[0].deliveryId}}
+
+
+# ####################################################################
+#  1. RESTAURANT SERVICE (8082)
+# ####################################################################
+
+### 1.1 Register a restaurant (always open, for testing)
+# @name createRestaurant
+POST {{restaurant}}/restaurants
+Content-Type: application/json
+
+{
+  "name": "The Brown's cuisine",
+  "address": "CBD, Windhoek",
+  "openingHour": 8,
+  "closingHour": 21
+}
+
+### 1.2 Add a menu item: Kapana Platter
+# @name addKapana
+POST {{restaurant}}/restaurants/{{restaurantId}}/menu
+Content-Type: application/json
+
+{
+  "name": "Vetkoek",
+  "price": 8.0,
+  "stock": 5
+}
+
+### 1.3 Add a menu item: Fanta
+# @name addFanta
+POST {{restaurant}}/restaurants/{{restaurantId}}/menu
+Content-Type: application/json
+
+{
+  "name": "Coke",
+  "price": 10.0,
+  "stock": 20
+}
+
+### 1.4 List all restaurants
+GET {{restaurant}}/restaurants
+
+### 1.5 Get one restaurant
+GET {{restaurant}}/restaurants/{{restaurantId}}
+
+### 1.6 Is it open right now?
+GET {{restaurant}}/restaurants/{{restaurantId}}/open
+
+### 1.7 Show the menu with live stock
+GET {{restaurant}}/restaurants/{{restaurantId}}/menu
+
+### 1.8 Restock the Kapana Platter
+PUT {{restaurant}}/restaurants/{{restaurantId}}/menu/{{kapanaId}}/stock
+Content-Type: application/json
+
+{
+  "stock": 50
+}
+
+
+# ####################################################################
+#  2. DELIVERY SERVICE (8085) - drivers first, so one is ready
+# ####################################################################
+
+### 2.1 Register a driver (starts AVAILABLE)
+# @name registerDriver
+POST {{delivery}}/drivers
+Content-Type: application/json
+
+{
+  "name": "Tangeni",
+  "phone": "081 123 4567",
+  "vehicle": "Scooter"
+}
+
+### 2.2 List all drivers
+GET {{delivery}}/drivers
+
+### 2.3 Driver goes online
+PUT {{delivery}}/drivers/{{driverId}}/status
+Content-Type: application/json
+
+{
+  "status": "AVAILABLE"
+}
+
+### 2.4 Driver goes offline (refused while BUSY)
+PUT {{delivery}}/drivers/{{driverId}}/status
+Content-Type: application/json
+
+{
+  "status": "OFFLINE"
+}
+
+
+# ####################################################################
+#  3. ORDER SERVICE (8083) - the full journey
+# ####################################################################
+
+### 3.1 Place an order
+# @name placeOrder
+POST {{order}}/orders
+Content-Type: application/json
+
+{
+  "customerId": "CUST-001",
+  "restaurantId": "{{restaurantId}}",
+  "deliveryAddress": "12 Independence Ave, Windhoek",
+  "items": [
+    { "itemId": "{{kapanaId}}", "name": "Kapana Platter", "quantity": 2, "price": 85.0 },
+    { "itemId": "{{fantaId}}", "name": "Fanta", "quantity": 2, "price": 20.0 }
+  ]
+}
+
+### 3.2 Check the order (wait ~3 seconds after placing: should be CONFIRMED)
+GET {{order}}/orders/{{orderId}}
+
+### 3.3 Kitchen queue - the order is WAITING
+GET {{restaurant}}/restaurants/{{restaurantId}}/kitchen
+
+### 3.4 Kitchen: start cooking
+PUT {{restaurant}}/restaurants/{{restaurantId}}/kitchen/{{orderId}}/preparing
+
+### 3.5 Kitchen: food is ready (a free driver is assigned automatically)
+PUT {{restaurant}}/restaurants/{{restaurantId}}/kitchen/{{orderId}}/ready
+
+### 3.6 Find the delivery for this order
+# @name findDelivery
+GET {{delivery}}/deliveries?orderId={{orderId}}
+
+### 3.7 The driver's current job
+GET {{delivery}}/drivers/{{driverId}}/current
+
+### 3.8 Driver confirms delivery
+POST {{delivery}}/deliveries/{{deliveryId}}/complete
+
+### 3.9 The order's full timeline (CREATED -> DELIVERED)
+GET {{order}}/orders/{{orderId}}
+
+### 3.10 List all orders
+GET {{order}}/orders
+
+### 3.11 Orders for one customer
+GET {{order}}/orders?customerId=CUST-001
+
+### 3.12 Cancel an order (only works before cooking starts)
+PUT {{order}}/orders/{{orderId}}/cancel
+
+
+# ####################################################################
+#  4. PAYMENT SERVICE (8084)
+# ####################################################################
+
+### 4.1 All payments
+GET {{payment}}/payments
+
+### 4.2 The payment for the current order
+GET {{payment}}/payments/{{orderId}}
+
+
+# ####################################################################
+#  5. DELIVERY SERVICE (8085) - more
+# ####################################################################
+
+### 5.1 All deliveries
+GET {{delivery}}/deliveries
+
+### 5.2 Deliveries waiting for a driver
+GET {{delivery}}/deliveries?status=WAITING_FOR_DRIVER
+
+### 5.3 One delivery by ID
+GET {{delivery}}/deliveries/{{deliveryId}}
+
+
+# ####################################################################
+#  6. CUSTOMER SERVICE (8081)
+# ####################################################################
+
+### 6.1 Register a customer
+# @name registerCustomer
+POST {{customer}}/customers
+Content-Type: application/json
+
+{
+  "name": "Ndapewa Shikongo",
+  "email": "ndapewa@example.com",
+  "phone": "081 555 1234"
+}
+
+### 6.2 Add a delivery address
+POST {{customer}}/customers/{{customerId}}/addresses
+Content-Type: application/json
+
+{
+  "label": "Home",
+  "street": "12 Independence Ave",
+  "city": "Windhoek"
+}
+
+### 6.3 List the customer's addresses
+GET {{customer}}/customers/{{customerId}}/addresses
+
+### 6.4 List all customers
+GET {{customer}}/customers
+
+### 6.5 Get one customer
+GET {{customer}}/customers/{{customerId}}
+
+### 6.6 Order history for CUST-001 (built from Kafka events)
+GET {{customer}}/customers/CUST-001/orders
+
+### 6.7 Invalid email (should return 400)
+POST {{customer}}/customers
+Content-Type: application/json
+
+{
+  "name": "Test",
+  "email": "not-an-email",
+  "phone": "081"
+}
+
+
+# ####################################################################
+#  7. NOTIFICATION SERVICE (8086)
+# ####################################################################
+
+### 7.1 All notifications
+GET {{notification}}/notifications
+
+### 7.2 Notifications for the current order
+GET {{notification}}/notifications?orderId={{orderId}}
+
+### 7.3 Notifications for one person
+GET {{notification}}/notifications?recipientId=CUST-001
+
+
+# ####################################################################
+#  8. ADMIN SERVICE (8087)
+# ####################################################################
+
+### 8.1 Orders by status
+GET {{admin}}/reports/summary
+
+### 8.2 Statistics per restaurant
+GET {{admin}}/reports/restaurants
+
+### 8.3 Delivery performance
+GET {{admin}}/reports/deliveries
